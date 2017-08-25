@@ -59,8 +59,41 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :param num_classes: Number of classes to classify
     :return: The Tensor for the last layer of output
     """
+    '''
+    layer7: 5x18x4096
+    layer4: 10x36x512
+    layer3: 20x72x256
+
+    fcn_layer1: 10x36x2
+    fcn_layer2: 20x72x2
+    '''
     # TODO: Implement function
-    return None
+
+    # Resample vgg_layer7_out by 1x1 Convolution: To go from ?x5x18x4096 to ?x5x18x2
+    vgg_layer7_out_resampled = tf.layers.conv2d(vgg_layer7_out,num_classes,1,strides=(1,1))
+
+    # Upsample vgg_layer7_out_resampled: by factor of 2 in order to go from ?x5x18x2 to ?x10x36x2
+    fcn_layer1 = tf.layers.conv2d_transpose(vgg_layer7_out_resampled,num_classes,kernel_size=4,strides=(2,2))
+
+    # Resample vgg_layer4_out out by 1x1 Convolution: To go from ?x10x36x512 to ?x10x36x2
+    vgg_layer4_out_resampled = tf.layers.conv2d(vgg_layer4_out,num_classes,1,strides=(1,1))
+
+    # Combined_layer1 = tf.add(vgg_layer7, vgg_layer4)
+    combined_layer1 = tf.add(fcn_layer1, vgg_layer4_out_resampled)
+
+    # fcn_layer2: upsample combined_layer1 by factor of 2 in order to go from ?x10x36x2 to ?x20x72x2
+    fcn_layer2 = tf.layers.conv2d_transpose(combined_layer1,num_classes,kernel_size=4,strides=(2,2))
+
+    # resample vgg_layer3_out out by 1x1 Convolution: To go from ?x20x72x256 to ?x20x72x2
+    vgg_layer3_out_resampled = tf.layers.conv2d(vgg_layer3_out,num_classes,1,strides=(1,1))
+
+    # combined_layer2 = tf.add(vgg_layer3, fcn_layer2)
+    combined_layer2 = tf.add(vgg_layer3_out_resampled, fcn_layer2)
+
+    # upsample combined_layer2 by factor of 8 in order to go from ?x20x72x2 to ?x160x576x2
+    final_layer = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=16,strides=(8,8))
+
+    return final_layer
 tests.test_layers(layers)
 
 
