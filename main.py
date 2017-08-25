@@ -5,6 +5,7 @@ import warnings
 from distutils.version import LooseVersion
 import project_tests as tests
 
+import pdb
 
 # Check TensorFlow Version
 assert LooseVersion(tf.__version__) >= LooseVersion('1.0'), 'Please use TensorFlow version 1.0 or newer.  You are using {}'.format(tf.__version__)
@@ -32,8 +33,20 @@ def load_vgg(sess, vgg_path):
     vgg_layer3_out_tensor_name = 'layer3_out:0'
     vgg_layer4_out_tensor_name = 'layer4_out:0'
     vgg_layer7_out_tensor_name = 'layer7_out:0'
+
+    # Load model
+    tf.saved_model.loader.load(sess,[vgg_tag],vgg_path)
     
-    return None, None, None, None, None
+    # Get tensors
+    image_input = sess.graph.get_tensor_by_name(vgg_input_tensor_name)
+    keep_prob = sess.graph.get_tensor_by_name(vgg_keep_prob_tensor_name)
+    layer3_out = sess.graph.get_tensor_by_name(vgg_layer3_out_tensor_name)
+    layer4_out = sess.graph.get_tensor_by_name(vgg_layer4_out_tensor_name)
+    layer7_out = sess.graph.get_tensor_by_name(vgg_layer7_out_tensor_name)
+
+
+
+    return image_input, keep_prob, layer3_out, layer4_out, layer7_out
 tests.test_load_vgg(load_vgg, tf)
 
 
