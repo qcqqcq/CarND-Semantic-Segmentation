@@ -25,8 +25,8 @@ def load_vgg(sess, vgg_path):
     :param vgg_path: Path to vgg folder, containing "variables/" and "saved_model.pb"
     :return: Tuple of Tensors from VGG model (image_input, keep_prob, layer3_out, layer4_out, layer7_out)
     """
-    # TODO: Implement function
-    #   Use tf.saved_model.loader.load to load the model and weights
+
+    # Names
     vgg_tag = 'vgg16'
     vgg_input_tensor_name = 'image_input:0'
     vgg_keep_prob_tensor_name = 'keep_prob:0'
@@ -45,7 +45,6 @@ def load_vgg(sess, vgg_path):
     layer7_out = sess.graph.get_tensor_by_name(vgg_layer7_out_tensor_name)
 
 
-
     return image_input, keep_prob, layer3_out, layer4_out, layer7_out
 tests.test_load_vgg(load_vgg, tf)
 
@@ -58,49 +57,78 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :param vgg_layer3_out: TF Tensor for VGG Layer 7 output
     :param num_classes: Number of classes to classify
     :return: The Tensor for the last layer of output
-    """
-    '''
-    layer7: 5x18x4096
-    layer4: 10x36x512
-    layer3: 20x72x256
 
-    fcn_layer1: 10x36x2
-    fcn_layer2: 20x72x2
-    '''
-    # TODO: Implement function
+
+    FCN structure
+    =========
+
+
+    -----vgg_layer3             (20 x 27 x 256 )
+    | ---vgg_layer4             (10 x 36 x 512 )
+    | |  vgg_layer7             ( 5 x 18 x 4096)
+    | |
+    | |  (above is encoder, frozon from VGG)
+    | |  (below is decoder, learned during training)
+    | |
+    | |  vgg_layer7_resampled   ( 5 x 18 x 2)
+    | |  decoder_layer1         (10 x 36 x 2)
+    | ---(vgg_layer4 resampled) (10 x 36 x 2)
+    |    combined_layer1        (10 x 36 x 2)
+    |    decoder_layer2         (20 x 72 x 2)
+    -----(vgg_layer3 resampled) (20 x 72 x 2)
+         combined_layer2        (20 x 72 x 2)
+         final_layer           (160 x 576 x 2)
+    
+    The decoder layers basically perform transposed convolutions
+    and implement skip layer (resampling where necessary to get
+    consistent kernel sizes) 
+    """
+
 
     # Start by freezing VGG
+    # Since we are not re-training the encoder part
     vgg_layer3_out = tf.stop_gradient(vgg_layer3_out)
     vgg_layer4_out = tf.stop_gradient(vgg_layer4_out)
     vgg_layer7_out = tf.stop_gradient(vgg_layer7_out)
 
-    # Resample vgg_layer7_out by 1x1 Convolution: To go from ?x5x18x4096 to ?x5x18x2
+
+    # 1x1 convolution on vgg_layer7_out to reduce to num_classes kernels
+    # in:   ?x5x18x4096
+    # out:  ?x5x18x2
     vgg_layer7_out_resampled = tf.layers.conv2d(vgg_layer7_out,num_classes,1,strides=(1,1))
 
-    # Upsample vgg_layer7_out_resampled: by factor of 2 in order to go from ?x5x18x2 to ?x10x36x2
-    fcn_layer1 = tf.layers.conv2d_transpose(vgg_layer7_out_resampled,num_classes,kernel_size=(2,2),strides=(2,2),padding='valid')
+    # Upsample vgg_layer7_out_resampled by factor of 2 
+    # In:   ?x5x18x2 
+    # Out:  ?x10x36x2
+    decoder_layer1 = tf.layers.conv2d_transpose(vgg_layer7_out_resampled,num_classes,kernel_size=(2,2),strides=(2,2),padding='valid')
 
-    # Resample vgg_layer4_out out by 1x1 Convolution: To go from ?x10x36x512 to ?x10x36x2
+    # Resample vgg_layer4_out to reduce to num_classes kernels
+    # In:  ?x10x36x512 
+    # OUt: ?x10x36x2
     vgg_layer4_out_resampled = tf.layers.conv2d(vgg_layer4_out,num_classes,1,strides=(1,1))
 
-    # Combined_layer1 = tf.add(vgg_layer7, vgg_layer4)
-    combined_layer1 = tf.add(fcn_layer1, vgg_layer4_out_resampled)
+    # Combine to complete skip layer
+    combined_layer1 = tf.add(decoder_layer1, vgg_layer4_out_resampled)
 
-    # fcn_layer2: upsample combined_layer1 by factor of 2 in order to go from ?x10x36x2 to ?x20x72x2
-    fcn_layer2 = tf.layers.conv2d_transpose(combined_layer1,num_classes,kernel_size=(2,2),strides=(2,2),padding='valid')
+    # Upsample combined_layer1 by factor of 2 
+    # In:  ?x10x36x2 
+    # Out: ?x20x72x2
+    decoder_layer2 = tf.layers.conv2d_transpose(combined_layer1,num_classes,kernel_size=(2,2),strides=(2,2),padding='valid')
 
-    # resample vgg_layer3_out out by 1x1 Convolution: To go from ?x20x72x256 to ?x20x72x2
+    # Sesample vgg_layer3_out to reduce to num_classes kernels
+    # In:  ?x20x72x256 
+    # Out: ?x20x72x2
     vgg_layer3_out_resampled = tf.layers.conv2d(vgg_layer3_out,num_classes,1,strides=(1,1))
 
-    # combined_layer2 = tf.add(vgg_layer3, fcn_layer2)
-    combined_layer2 = tf.add(vgg_layer3_out_resampled, fcn_layer2)
+    # Combine to complete skip layer
+    combined_layer2 = tf.add(vgg_layer3_out_resampled, decoder_layer2)
 
-    # upsample combined_layer2 by factor of 8 in order to go from ?x20x72x2 to ?x160x576x2
+    # Upsample combined_layer2 by factor of 8 
+    # In:  ?x20x72x2 
+    # Out: ?x160x576x2
     final_layer = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=(8,8),strides=(8,8),padding='valid')
 
    
-    
-
     return final_layer
 tests.test_layers(layers)
 
@@ -115,15 +143,15 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     :return: Tuple of (logits, train_op, cross_entropy_loss)
     """
 
-
-    # TODO: Implement function
+    # Reshape logits and labels to get mean cross entropy
     logits = tf.reshape(nn_last_layer,(-1,num_classes))
     labels_vec = tf.reshape(correct_label,(-1,num_classes))
     cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels_vec))
+
+    # Use Adam Optimizer
     train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cross_entropy_loss)
 
     return logits,train_op,cross_entropy_loss
-    #return nn_last_layer,train_op,cross_entropy_loss
 tests.test_optimize(optimize)
 
 
@@ -144,17 +172,16 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     """
 
 
-
-    # TODO: Implement function
+    # Iterate through epochs
     for epoch in range(epochs):
         batch_num = 0
+        # Iterate through batches
         for batch_x,batch_y in get_batches_fn(batch_size):
     
-            #batch_x = batch_x.astype('float')
-            #print('batch_x')
-            #print(batch_x.shape)
-            #print(batch_x.dtype)
+            # Run actual training with loss
             _,cost = sess.run([train_op,cross_entropy_loss],feed_dict={input_image:batch_x,correct_label:batch_y,learning_rate:0.01, keep_prob:0.5})
+
+            # Report progress
             print('')
             print('Epoch: %i, batch number: %i, cost: %.3f'%(epoch,batch_num,cost))
             batch_num += 1
@@ -194,7 +221,6 @@ def run_nn():
         # OPTIONAL: Augment Images for better results
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
-        # TODO: Build NN using load_vgg, layers, and optimize function
         print('')
         print('Start loading VGG')
 
@@ -210,13 +236,13 @@ def run_nn():
         # optimize
         logits,train_op,cross_entropy_loss = optimize(final_layer, correct_label, learning_rate, num_classes)
 
-        # Initialize?
+        # Initialize
         sess.run(tf.global_variables_initializer())
 
-        # TODO: Train NN using the train_nn function
+        # Train
         train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,correct_label, keep_prob, learning_rate)
 
-        # TODO: Save inference data using helper.save_inference_samples
+        # Save
         helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
 
         # OPTIONAL: Apply the trained model to a video
