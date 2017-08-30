@@ -121,7 +121,7 @@ def test_train_nn(train_nn):
 
     train_op = tf.constant(0)
     cross_entropy_loss = tf.constant(10.11)
-    input_image = tf.placeholder(tf.float32, name='input_image')
+    input_image = tf.placeholder(tf.float32, name='input_image_fortest')
     correct_label = tf.placeholder(tf.float32, name='correct_label')
     keep_prob = tf.placeholder(tf.float32, name='keep_prob')
     learning_rate = tf.placeholder(tf.float32, name='learning_rate')

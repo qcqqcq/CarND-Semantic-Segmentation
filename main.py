@@ -5,7 +5,7 @@ import warnings
 from distutils.version import LooseVersion
 import project_tests as tests
 
-import pdb
+
 
 # Check TensorFlow Version
 assert LooseVersion(tf.__version__) >= LooseVersion('1.0'), 'Please use TensorFlow version 1.0 or newer.  You are using {}'.format(tf.__version__)
@@ -69,11 +69,16 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     '''
     # TODO: Implement function
 
+    # Start by freezing VGG
+    vgg_layer3_out = tf.stop_gradient(vgg_layer3_out)
+    vgg_layer4_out = tf.stop_gradient(vgg_layer4_out)
+    vgg_layer7_out = tf.stop_gradient(vgg_layer7_out)
+
     # Resample vgg_layer7_out by 1x1 Convolution: To go from ?x5x18x4096 to ?x5x18x2
     vgg_layer7_out_resampled = tf.layers.conv2d(vgg_layer7_out,num_classes,1,strides=(1,1))
 
     # Upsample vgg_layer7_out_resampled: by factor of 2 in order to go from ?x5x18x2 to ?x10x36x2
-    fcn_layer1 = tf.layers.conv2d_transpose(vgg_layer7_out_resampled,num_classes,kernel_size=4,strides=(2,2))
+    fcn_layer1 = tf.layers.conv2d_transpose(vgg_layer7_out_resampled,num_classes,kernel_size=(2,2),strides=(2,2),padding='valid')
 
     # Resample vgg_layer4_out out by 1x1 Convolution: To go from ?x10x36x512 to ?x10x36x2
     vgg_layer4_out_resampled = tf.layers.conv2d(vgg_layer4_out,num_classes,1,strides=(1,1))
@@ -82,7 +87,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     combined_layer1 = tf.add(fcn_layer1, vgg_layer4_out_resampled)
 
     # fcn_layer2: upsample combined_layer1 by factor of 2 in order to go from ?x10x36x2 to ?x20x72x2
-    fcn_layer2 = tf.layers.conv2d_transpose(combined_layer1,num_classes,kernel_size=4,strides=(2,2))
+    fcn_layer2 = tf.layers.conv2d_transpose(combined_layer1,num_classes,kernel_size=(2,2),strides=(2,2),padding='valid')
 
     # resample vgg_layer3_out out by 1x1 Convolution: To go from ?x20x72x256 to ?x20x72x2
     vgg_layer3_out_resampled = tf.layers.conv2d(vgg_layer3_out,num_classes,1,strides=(1,1))
@@ -91,7 +96,10 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     combined_layer2 = tf.add(vgg_layer3_out_resampled, fcn_layer2)
 
     # upsample combined_layer2 by factor of 8 in order to go from ?x20x72x2 to ?x160x576x2
-    final_layer = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=16,strides=(8,8))
+    final_layer = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=(8,8),strides=(8,8),padding='valid')
+
+   
+    
 
     return final_layer
 tests.test_layers(layers)
@@ -106,8 +114,16 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     :param num_classes: Number of classes to classify
     :return: Tuple of (logits, train_op, cross_entropy_loss)
     """
+
+
     # TODO: Implement function
-    return None, None, None
+    logits = tf.reshape(nn_last_layer,(-1,num_classes))
+    labels_vec = tf.reshape(correct_label,(-1,num_classes))
+    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels_vec))
+    train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cross_entropy_loss)
+
+    return logits,train_op,cross_entropy_loss
+    #return nn_last_layer,train_op,cross_entropy_loss
 tests.test_optimize(optimize)
 
 
@@ -126,17 +142,40 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param keep_prob: TF Placeholder for dropout keep probability
     :param learning_rate: TF Placeholder for learning rate
     """
+
+
+
     # TODO: Implement function
-    pass
+    for epoch in range(epochs):
+        batch_num = 0
+        for batch_x,batch_y in get_batches_fn(batch_size):
+    
+            #batch_x = batch_x.astype('float')
+            #print('batch_x')
+            #print(batch_x.shape)
+            #print(batch_x.dtype)
+            _,cost = sess.run([train_op,cross_entropy_loss],feed_dict={input_image:batch_x,correct_label:batch_y,learning_rate:0.01, keep_prob:0.5})
+            print('')
+            print('Epoch: %i, batch number: %i, cost: %.3f'%(epoch,batch_num,cost))
+            batch_num += 1
+
 tests.test_train_nn(train_nn)
 
 
-def run():
+def run_nn():
+
+    epochs = 100
+    batch_size = 20
+
     num_classes = 2
     image_shape = (160, 576)
     data_dir = './data'
     runs_dir = './runs'
     tests.test_for_kitti_dataset(data_dir)
+
+    # Placeholders
+    correct_label = tf.placeholder(tf.float32, [None, None, None, num_classes])
+    learning_rate = tf.placeholder(tf.float32)
 
     # Download pretrained vgg model
     helper.maybe_download_pretrained_vgg(data_dir)
@@ -146,6 +185,7 @@ def run():
     #  https://www.cityscapes-dataset.com/
 
     with tf.Session() as sess:
+
         # Path to vgg model
         vgg_path = os.path.join(data_dir, 'vgg')
         # Create function to get batches
@@ -155,14 +195,32 @@ def run():
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
         # TODO: Build NN using load_vgg, layers, and optimize function
+        print('')
+        print('Start loading VGG')
+
+        # load_vgg
+        input_image, keep_prob, layer3_out, layer4_out, layer7_out = load_vgg(sess, vgg_path)
+        print('')
+        print('Done loading VGG')
+
+
+        # layers
+        final_layer = layers(layer3_out, layer4_out, layer7_out, num_classes)
+
+        # optimize
+        logits,train_op,cross_entropy_loss = optimize(final_layer, correct_label, learning_rate, num_classes)
+
+        # Initialize?
+        sess.run(tf.global_variables_initializer())
 
         # TODO: Train NN using the train_nn function
+        train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,correct_label, keep_prob, learning_rate)
 
         # TODO: Save inference data using helper.save_inference_samples
-        #  helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
+        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
 
         # OPTIONAL: Apply the trained model to a video
 
 
 if __name__ == '__main__':
-    run()
+    run_nn()

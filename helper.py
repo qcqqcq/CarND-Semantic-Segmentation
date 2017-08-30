@@ -11,6 +11,7 @@ from glob import glob
 from urllib.request import urlretrieve
 from tqdm import tqdm
 
+import pdb
 
 class DLProgress(tqdm):
     last_block = 0
@@ -116,7 +117,10 @@ def gen_test_output(sess, logits, keep_prob, image_pl, data_folder, image_shape)
         im_softmax = sess.run(
             [tf.nn.softmax(logits)],
             {keep_prob: 1.0, image_pl: [image]})
+        #pdb.set_trace()
         im_softmax = im_softmax[0][:, 1].reshape(image_shape[0], image_shape[1])
+
+
         segmentation = (im_softmax > 0.5).reshape(image_shape[0], image_shape[1], 1)
         mask = np.dot(segmentation, np.array([[0, 255, 0, 127]]))
         mask = scipy.misc.toimage(mask, mode="RGBA")
