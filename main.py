@@ -48,8 +48,7 @@ def load_vgg(sess, vgg_path):
     return image_input, keep_prob, layer3_out, layer4_out, layer7_out
 tests.test_load_vgg(load_vgg, tf)
 
-
-def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
+def layers_old(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     """
     Create the layers for a fully convolutional network.  Build skip-layers using the vgg layers.
     :param vgg_layer7_out: TF Tensor for VGG Layer 3 output
@@ -123,11 +122,101 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     # Combine to complete skip layer
     combined_layer2 = tf.add(vgg_layer3_out_resampled, decoder_layer2)
 
-    # Upsample combined_layer2 by factor of 8 
+    '''
+    # Experimental 2 final layers
+    # Upsample combined_layer2 by factor of 4
+    # In:  ?x20x72x2 
+    # Out: ?x80x288x2
+    decoder_layer3 = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=(8,8),strides=(4,4),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
+
+    # Upsample decoder_layer3 by factor of 2
+    # In:  ?x80x288x2 
+    # Out: ?x160x576x2
+    final_layer = tf.layers.conv2d_transpose(decoder_layer3,num_classes,kernel_size=(4,4),strides=(2,2),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
+    '''
+
+    # Upsample combined_layer2 by factor of 8
     # In:  ?x20x72x2 
     # Out: ?x160x576x2
     final_layer = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=(16,16),strides=(8,8),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
+   
+    return final_layer
 
+def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
+    """
+    Create the layers for a fully convolutional network.  Build skip-layers using the vgg layers.
+    :param vgg_layer7_out: TF Tensor for VGG Layer 3 output
+    :param vgg_layer4_out: TF Tensor for VGG Layer 4 output
+    :param vgg_layer3_out: TF Tensor for VGG Layer 7 output
+    :param num_classes: Number of classes to classify
+    :return: The Tensor for the last layer of output
+
+
+    FCN structure
+    =========
+
+
+    -----vgg_layer3             (20 x 27 x 256 )
+    | ---vgg_layer4             (10 x 36 x 512 )
+    | |  vgg_layer7             ( 5 x 18 x 4096)
+    | |
+    | |  (above is encoder, frozon from VGG)
+    | |  (below is decoder, learned during training)
+    | |
+    | |  decoder_layer1         (10 x 36 x 512)
+    | ---(vgg_layer4)           
+    |    combined_layer1        (10 x 36 x 512)
+    |    decoder_layer2         (20 x 72 x 256)
+    -----(vgg_layer3)           
+         combined_layer2        (20 x 72 x 256)
+         final_layer           (160 x 576 x 2)
+    
+    The decoder layers basically perform transposed convolutions
+    and implement skip layer (resampling where necessary to get
+    consistent kernel sizes) 
+    """
+
+
+    # Start by freezing VGG
+    # Since we are not re-training the encoder part
+    vgg_layer3_out = tf.stop_gradient(vgg_layer3_out)
+    vgg_layer4_out = tf.stop_gradient(vgg_layer4_out)
+    vgg_layer7_out = tf.stop_gradient(vgg_layer7_out)
+
+
+    # Upsample vgg_layer7_out_resampled by factor of 2 
+    # In:   ?x5x18x2 
+    # Out:  ?x10x36x2
+    decoder_layer1 = tf.layers.conv2d_transpose(vgg_layer7_out,512,kernel_size=(4,4),strides=(2,2),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01),activation=tf.nn.relu)
+
+    # Combine to complete skip layer
+    combined_layer1 = tf.add(decoder_layer1, vgg_layer4_out)
+
+    # Upsample combined_layer1 by factor of 2 
+    # In:  ?x10x36x2 
+    # Out: ?x20x72x2
+    decoder_layer2 = tf.layers.conv2d_transpose(combined_layer1,256,kernel_size=(4,4),strides=(2,2),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01),activation=tf.nn.relu)
+
+    # Combine to complete skip layer
+    combined_layer2 = tf.add(vgg_layer3_out, decoder_layer2)
+
+    '''
+    # Experimental 2 final layers
+    # Upsample combined_layer2 by factor of 4
+    # In:  ?x20x72x2 
+    # Out: ?x80x288x2
+    decoder_layer3 = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=(8,8),strides=(4,4),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
+
+    # Upsample decoder_layer3 by factor of 2
+    # In:  ?x80x288x2 
+    # Out: ?x160x576x2
+    final_layer = tf.layers.conv2d_transpose(decoder_layer3,num_classes,kernel_size=(4,4),strides=(2,2),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
+    '''
+
+    # Upsample combined_layer2 by factor of 8
+    # In:  ?x20x72x2 
+    # Out: ?x160x576x2
+    final_layer = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=(16,16),strides=(8,8),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
    
     return final_layer
 tests.test_layers(layers)
@@ -179,7 +268,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
         for batch_x,batch_y in get_batches_fn(batch_size):
     
             # Run actual training with loss
-            _,cost = sess.run([train_op,cross_entropy_loss],feed_dict={input_image:batch_x,correct_label:batch_y,learning_rate:10**-3, keep_prob:0.5})
+            _,cost = sess.run([train_op,cross_entropy_loss],feed_dict={input_image:batch_x,correct_label:batch_y,learning_rate:10**-4, keep_prob:0.5})
 
             # Report progress
             print('')
@@ -193,8 +282,15 @@ def run_nn():
 
     # Epochs and batch_size chosen through experiments 
     # and reviewer's recommendations
-    epochs = 30
+
+    epochs = 20
     batch_size = 8
+
+    '''
+    #Works OK with old layers
+    epochs = 8
+    batch_size = 4
+    '''
 
     num_classes = 2
     image_shape = (160, 576)
