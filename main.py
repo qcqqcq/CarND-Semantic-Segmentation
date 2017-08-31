@@ -185,37 +185,18 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
 
     # Upsample vgg_layer7_out_resampled by factor of 2 
-    # In:   ?x5x18x2 
-    # Out:  ?x10x36x2
     decoder_layer1 = tf.layers.conv2d_transpose(vgg_layer7_out,512,kernel_size=(4,4),strides=(2,2),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01),activation=tf.nn.relu)
 
     # Combine to complete skip layer
     combined_layer1 = tf.add(decoder_layer1, vgg_layer4_out)
 
     # Upsample combined_layer1 by factor of 2 
-    # In:  ?x10x36x2 
-    # Out: ?x20x72x2
     decoder_layer2 = tf.layers.conv2d_transpose(combined_layer1,256,kernel_size=(4,4),strides=(2,2),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01),activation=tf.nn.relu)
 
     # Combine to complete skip layer
     combined_layer2 = tf.add(vgg_layer3_out, decoder_layer2)
 
-    '''
-    # Experimental 2 final layers
-    # Upsample combined_layer2 by factor of 4
-    # In:  ?x20x72x2 
-    # Out: ?x80x288x2
-    decoder_layer3 = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=(8,8),strides=(4,4),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
-
-    # Upsample decoder_layer3 by factor of 2
-    # In:  ?x80x288x2 
-    # Out: ?x160x576x2
-    final_layer = tf.layers.conv2d_transpose(decoder_layer3,num_classes,kernel_size=(4,4),strides=(2,2),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
-    '''
-
     # Upsample combined_layer2 by factor of 8
-    # In:  ?x20x72x2 
-    # Out: ?x160x576x2
     final_layer = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=(16,16),strides=(8,8),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
    
     return final_layer
