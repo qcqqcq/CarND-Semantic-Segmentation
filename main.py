@@ -100,7 +100,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     # Upsample vgg_layer7_out_resampled by factor of 2 
     # In:   ?x5x18x2 
     # Out:  ?x10x36x2
-    decoder_layer1 = tf.layers.conv2d_transpose(vgg_layer7_out_resampled,num_classes,kernel_size=(2,2),strides=(2,2),padding='valid',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
+    decoder_layer1 = tf.layers.conv2d_transpose(vgg_layer7_out_resampled,num_classes,kernel_size=(4,4),strides=(2,2),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
 
     # Resample vgg_layer4_out to reduce to num_classes kernels
     # In:  ?x10x36x512 
@@ -113,7 +113,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     # Upsample combined_layer1 by factor of 2 
     # In:  ?x10x36x2 
     # Out: ?x20x72x2
-    decoder_layer2 = tf.layers.conv2d_transpose(combined_layer1,num_classes,kernel_size=(2,2),strides=(2,2),padding='valid',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
+    decoder_layer2 = tf.layers.conv2d_transpose(combined_layer1,num_classes,kernel_size=(4,4),strides=(2,2),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
 
     # Sesample vgg_layer3_out to reduce to num_classes kernels
     # In:  ?x20x72x256 
@@ -126,7 +126,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     # Upsample combined_layer2 by factor of 8 
     # In:  ?x20x72x2 
     # Out: ?x160x576x2
-    final_layer = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=(8,8),strides=(8,8),padding='valid',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
+    final_layer = tf.layers.conv2d_transpose(combined_layer2,num_classes,kernel_size=(16,16),strides=(8,8),padding='same',kernel_initializer = tf.truncated_normal_initializer(stddev=0.01))
 
    
     return final_layer
@@ -193,8 +193,8 @@ def run_nn():
 
     # Epochs and batch_size chosen through experiments 
     # and reviewer's recommendations
-    epochs = 18
-    batch_size = 20
+    epochs = 30
+    batch_size = 8
 
     num_classes = 2
     image_shape = (160, 576)
