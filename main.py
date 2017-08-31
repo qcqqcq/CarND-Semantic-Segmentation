@@ -191,7 +191,7 @@ tests.test_train_nn(train_nn)
 
 def run_nn():
 
-    epochs = 100
+    epochs = 50
     batch_size = 20
 
     num_classes = 2
